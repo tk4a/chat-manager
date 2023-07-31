@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: chat-manager
+  profiles:
+    active: dev
+  config:
+    import: configserver:http://localhost:8888
+
+com:
+  chat-manager:
+    notification:
+      url: http://localhost:8080/notification/
