@@ -1,6 +1,9 @@
 package com.chat.manager.configuration
 
 import com.chat.manager.configuration.property.TelegramProperties
+import com.chat.manager.enum.Command
+import com.chat.manager.enum.Message
+import com.chat.manager.parser.getCommand
 import com.chat.manager.service.ButtonService
 import com.chat.manager.service.NotificationService
 import org.springframework.scheduling.annotation.Scheduled
@@ -37,54 +40,68 @@ class ChatManagerBot(
 
     override fun onUpdateReceived(update: Update?) {
         update?.message?.let { it ->
+            val chatId = it.chatId.toString()
             it.text.let { text ->
-                logger.info("receive message from = '${it.from.userName}', firstName = '${it.from.firstName}', chatId = ${it.chatId}")
-                if (text.contains("/check") && it.from.userName == MY_USERNAME) {
-                    execute(
-                        SendMessage(
-                            TEST_CHAT_ID,
-                            "alive"
-                        )
-                    )
-                }
-                if (text.contains("/clear") && it.from.userName == MY_USERNAME) {
-                    val writer = PrintWriter(File("telegram.txt"))
-                    writer.write("")
-                    writer.close()
-                    execute(
-                        SendMessage(
-                            TEST_CHAT_ID,
-                            "successfully cleared"
-                        )
-                    )
-                }
-
-                if (text.contains("/send") && it.from.userName == MY_USERNAME) {
-                    val params = text.split("-")
-                    chats.forEach { id ->
-                        execute(
-                            SendMessage().apply {
-                                this.chatId = id
-                                this.text = params[1]
-                                this.replyMarkup = InlineKeyboardMarkup(
-                                    mutableListOf(mutableListOf(InlineKeyboardButton(params[2]).apply {
-                                        url = params[3]
-                                    }))
-                                )
-                            }
+                when(text.getCommand()) {
+                    Command.START.name -> {
+                        if (!chats.contains(chatId)) chats.add(chatId).also {
+                            SendMessage(
+                                chatId,
+                                Message.START.text
+                            )
+                        } else SendMessage(
+                            chatId,
+                            Message.START_ERROR_MSG.text
                         )
                     }
-                }
-
-                if (text.contains("/time")) {
-                    val params = text.split(" ")[1].split(":")
-                    chatIdToTime[it.chatId.toString()] = LocalDateTime.of(2023, 1, 1, params[0].toInt(), params[1].toInt())
-                    execute(
-                        SendMessage(
-                            it.chatId.toString(),
-                            "successfully set new time ${chatIdToTime[it.chatId.toString()]}"
+                    Command.TIME.name -> {
+                        val params = text.split(" ")[1].split(":")
+                        chatIdToTime[chatId] = LocalDateTime.of(2023, 1, 1, params[0].toInt(), params[1].toInt())
+                        execute(
+                            SendMessage(
+                                chatId,
+                                "successfully set new time ${chatIdToTime[chatId]}"
+                            )
                         )
-                    )
+                    }
+                    Command.CHECK.name -> {
+                        logger.info("receive message from = '${it.from.userName}', firstName = '${it.from.firstName}', chatId = ${it.chatId}")
+                        execute(
+                            SendMessage(
+                                TEST_CHAT_ID,
+                                "alive"
+                            )
+                        )
+                    }
+                    Command.CLEAR.name -> {
+                        val writer = PrintWriter(File("telegram.txt"))
+                        writer.write("")
+                        writer.close()
+                        execute(
+                            SendMessage(
+                                TEST_CHAT_ID,
+                                "successfully cleared"
+                            )
+                        )
+                    }
+                    Command.SEND.name -> {
+                        val params = text.split("-")
+                        chats.forEach { id ->
+                            execute(
+                                SendMessage().apply {
+                                    this.chatId = id
+                                    this.text = params[1]
+                                    this.replyMarkup = InlineKeyboardMarkup(
+                                        mutableListOf(mutableListOf(InlineKeyboardButton(params[2]).apply {
+                                            url = params[3]
+                                        }))
+                                    )
+                                }
+                            )
+                        }
+                    }
+                    Command.MSG.name -> chatIdToMsg[chatId] = text.substringAfter(Command.MSG.name)
+                    Command.LINK.name -> chatIdToLink[chatId] = text.substringAfter(Command.LINK.name).trim()
                 }
 
                 if (text.contains("/log") && it.from.userName == MY_USERNAME) {
@@ -108,7 +125,7 @@ class ChatManagerBot(
                 if (text.contains("/info")) {
                     execute(
                         SendMessage(
-                            it.chatId.toString(),
+                            chatId,
                             INFO_MSG
                         )
                     )
@@ -116,10 +133,10 @@ class ChatManagerBot(
 
                 if (text.contains("/msg")) {
                     val msg: String = text.split("/msg")[1]
-                    chatIdToMSg[it.chatId.toString()] = msg
+                    chatIdToMsg[chatId] = msg
                     execute(
                         SendMessage(
-                            it.chatId.toString(),
+                            chatId,
                             "Msg updated to $msg"
                         )
                     )
@@ -191,54 +208,23 @@ class ChatManagerBot(
     @Scheduled(cron = "0 * * * * *")
     fun sendDailyNotification() {
         logger.info("Starting schedule")
-        if (!listOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY).contains(LocalDate.now().dayOfWeek) &&
-            LocalDateTime.now(ZoneId.of("Europe/Moscow")).minute == time.minute && LocalDateTime.now(ZoneId.of("Europe/Moscow")).hour == time.hour
+        if (!listOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY).contains(LocalDate.now().dayOfWeek)
+//            LocalDateTime.now(ZoneId.of("Europe/Moscow")).minute == time.minute && LocalDateTime.now(ZoneId.of("Europe/Moscow")).hour == time.hour
         ) {
-            logger.info("send daily message")
-            val gif = InputFile(File("/home/centos/gifts")
-                .listFiles()
-                .filter { it.name.endsWith(".mp4") }.toList().random()
-            )
-            chats.filter { !chatIdToTime.keys.contains(it) }.forEach {
-                execute(SendMessage().apply {
-                    this.chatId = it
-                    this.text = "Коллеги, созвон!"
-                    this.replyMarkup = InlineKeyboardMarkup(
-                        mutableListOf(mutableListOf(InlineKeyboardButton("Ссылка на дион").apply {
-                            url = "https://dion.vc/event/aleksandr.bushmin-ved-msb-bp"
-                        }))
-                    )
-                })
-                execute(SendAnimation().apply {
-                    this.chatId = it
-                    this.animation = gif
-                })
+            chats.forEach {
+                val gif = InputFile(File("/home/centos/gifts")
+                    .listFiles()
+                    .filter { file -> file.name.endsWith(".mp4") }.toList().random()
+                )
+                logger.info("send daily message")
+                if (chatIdToTime.containsKey(it) && chatIdToTime[it]?.minute == LocalDateTime.now(ZoneId.of("Europe/Moscow")).minute
+                    && chatIdToTime[it]?.hour == LocalDateTime.now(ZoneId.of("Europe/Moscow")).hour)
+                    sendMessage(it, gif) else {
+                    if (DEFAULT_TIME.hour == LocalDateTime.now(ZoneId.of("Europe/Moscow")).minute && DEFAULT_TIME.minute == LocalDateTime.now(ZoneId.of("Europe/Moscow")).hour)
+                        sendMessage(it, gif)
+                }
             }
-            val writer = PrintWriter(File("telegram.txt"))
-            writer.write("")
-            writer.close()
-            logger.info("successfully cleared after daily")
         }
-        val now = LocalDateTime.now(ZoneId.of("Europe/Moscow"))
-        chats
-            .filter { chatIdToTime[it]?.run { this.minute == now.minute && this.hour == now.hour } ?: false }
-            .forEach {
-                execute(
-                    SendMessage(
-                        it,
-                        chatIdToMSg[it] ?: DEFAULT_MSG
-                    )
-                )
-                execute(
-                    SendAnimation(
-                        it,
-                        InputFile(File("/home/centos/gifts")
-                            .listFiles()
-                            .filter { file -> file.name.endsWith(".mp4") }.toList().random()
-                        )
-                    )
-                )
-            }
         val forCheck = LocalDateTime.of(2023, 1, 1, 21, 0,0)
         if (LocalDateTime.now(ZoneId.of("Europe/Moscow")).minute == forCheck.minute && LocalDateTime.now(ZoneId.of("Europe/Moscow")).hour == forCheck.hour) {
             execute(
@@ -250,23 +236,37 @@ class ChatManagerBot(
         }
     }
 
-    private fun sendErrorMessage(chatId: String, msg: String) {
-        execute(SendMessage(chatId, msg))
+    private fun sendMessage(id: String, file: InputFile) {
+        execute(SendMessage().apply {
+            this.chatId = id
+            this.text = chatIdToMsg[id] ?: DEFAULT_MSG
+            chatIdToLink[id]?.let {
+                this.replyMarkup = InlineKeyboardMarkup(
+                    mutableListOf(mutableListOf(InlineKeyboardButton("Ссылка на дион").apply {
+                        url = "https://dion.vc/event/aleksandr.bushmin-ved-msb-bp"
+                    }))
+                )
+            }
+        })
+        execute(SendAnimation().apply {
+            this.chatId = id
+            this.animation = file
+        })
     }
 
     companion object {
-        var time: LocalDateTime = LocalDateTime.of(2023, 1, 1, 10, 59);
+        val DEFAULT_TIME: LocalDateTime = LocalDateTime.of(2023, 1, 1, 10, 59);
         const val TEST_CHAT_ID = "-775775105"
         const val VED_CHAT_ID = "-1001645909834"
         const val MY_USERNAME = "art1m"
         const val INFO_MSG =
-            """Привет, это бот который ежедневно отправляет уведомления в чат
-                 и вот что он умеет:
-                 /time - Установить время в которое будет отправлено сообщение в формате HH:MM, Например: 11:30
+            """Привет, это бот который ежедневно отправляет уведомления в чат и вот что он умеет: 
+                /time - Установить время в которое будет отправлено сообщение в формате HH:MM, Например: 11:30
             """
         const val DEFAULT_MSG = "Коллеги созвон"
         val chatIdToTime = HashMap<String, LocalDateTime>()
-        val chatIdToMSg = HashMap<String, String>()
-        val chats = listOf(VED_CHAT_ID, TEST_CHAT_ID)
+        val chatIdToMsg = HashMap<String, String>()
+        val chatIdToLink = HashMap<String, String>()
+        val chats = mutableListOf(TEST_CHAT_ID)
     }
 }
