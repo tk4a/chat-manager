@@ -17,14 +17,11 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton
 import java.io.File
 import java.io.PrintWriter
-import java.lang.StringBuilder
-import java.nio.file.Files
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.logging.Logger
-import kotlin.io.path.Path
 
 @Component
 class ChatManagerBot(
@@ -102,115 +99,16 @@ class ChatManagerBot(
                     }
                     Command.MSG.name -> chatIdToMsg[chatId] = text.substringAfter(Command.MSG.name)
                     Command.LINK.name -> chatIdToLink[chatId] = text.substringAfter(Command.LINK.name).trim()
-                }
-
-                if (text.contains("/log") && it.from.userName == MY_USERNAME) {
-                    val log = StringBuilder()
-                    val path = Path("telegram.txt")
-                    val lines = Files.readAllLines(path)
-                    lines.reverse()
-                    val size = if (lines.size > 10) 10 else lines.size - 1
-                    (0..size).onEach { i ->
-                        log.append(lines[i])
-                        log.append(System.lineSeparator())
-                    }
-                    execute(
-                        SendMessage(
-                            TEST_CHAT_ID,
-                            log.toString()
-                        )
-                    )
-                }
-
-                if (text.contains("/info")) {
-                    execute(
-                        SendMessage(
-                            chatId,
-                            INFO_MSG
-                        )
-                    )
-                }
-
-                if (text.contains("/msg")) {
-                    val msg: String = text.split("/msg")[1]
-                    chatIdToMsg[chatId] = msg
-                    execute(
-                        SendMessage(
-                            chatId,
-                            "Msg updated to $msg"
-                        )
-                    )
+                    else -> execute(SendMessage(chatId, "Неизвестная команда"))
                 }
             }
         }
-//            update?.message?.let { message ->
-//                val chatId = message.chatId
-//                val text = message.text
-//                when (text.getCommand()) {
-//
-//                    Command.START.text -> execute(buttonService.createGreetingButton(chatId))
-//
-//                    Command.HELP.text -> execute(buttonService.createHelpButton(chatId))
-//
-//                    Command.NOTIFY.text -> {
-//                        var errorMessage = ""
-//                        val incomingParameters = text.split(" ")
-//                        if (incomingParameters.size < 5) errorMessage = "Кажется чего то нехватает"
-//                        val date = text.parseDate()?.let {
-//                            errorMessage =
-//                                """
-//                                | Неправильный формат даты или времени!
-//                                | ДАТА - В формате ЧИСЛО МЕСЯЦ ГОД, с любым разделителем.
-//                                | Пример 10/01/2023, 10-01-2023, 10.01.2023
-//                            """.trimIndent()
-//                        }
-//                        val time = text.parseTime()?.let {
-//                            errorMessage =
-//                                """
-//                                | Неправильный формат даты или времени!
-//                                | ДАТА - В формате ЧИСЛО МЕСЯЦ ГОД, с любым разделителем.
-//                                | Пример 10/01/2023, 10-01-2023, 10.01.2023
-//                            """.trimIndent()
-//                        }
-//                        val link = incomingParameters.last()
-//                        notificationService.createNotification(message.toDto())
-//                            .doOnNext { println("Successfully created notification with id = '$it'") }
-//                            .subscribe()
-//                    }
-//
-//                    Command.NOTIFICATIONS.text, -> execute(
-//                        SendMessage(
-//                            chatId.toString(),
-//                            notificationService.getAll().map { notification -> notification.text }.toString()
-//                        )
-//                    )
-//                    else -> {
-//                        execute(SendChatAction(chatId.toString(), Action.TYPE.description))
-//                        Thread.sleep(1000L)
-//                        execute(SendMessage(chatId.toString(), "Вы ввели несуществующую команду. Попробуйте снова. Для помощи нажмите: /help"))
-//                    }
-//                }
-//        }
-//                "S" -> {
-//                    execute(SendMessage().apply {
-//                        this.chatId = it.chatId.toString()
-//                        this.text = "Все на дейли"
-//                        this.replyMarkup = InlineKeyboardMarkup(
-//                            mutableListOf(mutableListOf(InlineKeyboardButton("Ссылка на дион").apply {
-//                                callbackData = "HelloData"
-//                                url = "https://dion.vc/event/aleksandr.bushmin-ved-msb-bp"
-//                            }))
-////                            mutableListOf(mutableListOf(InlineKeyboardButton("Ссылка на дион", "https://dion.vc/event/aleksandr.bushmin-ved-msb-bp", "Ss", null, "qwe", "qwe2", false, LoginUrl("https://dion.vc/event/aleksandr.bushmin-ved-msb-bp", "Hello world", "Hello bot", false), WebAppInfo("https://dion.vc/event/aleksandr.bushmin-ved-msb-bp"))))
-//                    )
-//                })
         }
 
     @Scheduled(cron = "0 * * * * *")
     fun sendDailyNotification() {
         logger.info("Starting schedule")
-        if (!listOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY).contains(LocalDate.now().dayOfWeek)
-//            LocalDateTime.now(ZoneId.of("Europe/Moscow")).minute == time.minute && LocalDateTime.now(ZoneId.of("Europe/Moscow")).hour == time.hour
-        ) {
+        if (!listOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY).contains(LocalDate.now().dayOfWeek)) {
             chats.forEach {
                 val gif = InputFile(File("/home/centos/gifts")
                     .listFiles()
@@ -259,10 +157,6 @@ class ChatManagerBot(
         const val TEST_CHAT_ID = "-775775105"
         const val VED_CHAT_ID = "-1001645909834"
         const val MY_USERNAME = "art1m"
-        const val INFO_MSG =
-            """Привет, это бот который ежедневно отправляет уведомления в чат и вот что он умеет: 
-                /time - Установить время в которое будет отправлено сообщение в формате HH:MM, Например: 11:30
-            """
         const val DEFAULT_MSG = "Коллеги созвон"
         val chatIdToTime = HashMap<String, LocalDateTime>()
         val chatIdToMsg = HashMap<String, String>()
